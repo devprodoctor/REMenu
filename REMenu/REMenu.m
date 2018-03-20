@@ -109,6 +109,221 @@
     return self;
 }
 
+- (void)showInViewController:(UIViewController *)viewController {
+    if (self.isAnimating) {
+        return;
+    }
+    
+    self.isOpen = YES;
+    self.isAnimating = YES;
+    
+    self.containerView = ({
+        REMenuContainerView *view = [[REMenuContainerView alloc] init];
+        view.clipsToBounds = YES;
+        view.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        
+        if (self.backgroundView) {
+            self.backgroundView.alpha = 0;
+            [view addSubview:self.backgroundView];
+        }
+        view;
+    });
+    
+    self.menuView = ({
+        UIView *view = [[UIView alloc] init];
+        
+        if (!self.liveBlur || !REUIKitIsFlatMode()) {
+            view.backgroundColor = self.backgroundColor;
+        }
+        
+        view.layer.cornerRadius = self.cornerRadius;
+        view.layer.borderColor = self.borderColor.CGColor;
+        view.layer.borderWidth = self.borderWidth;
+        view.layer.masksToBounds = YES;
+        view.layer.shouldRasterize = YES;
+        view.layer.rasterizationScale = [UIScreen mainScreen].scale;
+        view.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        view;
+    });
+    
+    if (REUIKitIsFlatMode()) {
+        self.toolbar = ({
+            UIToolbar *toolbar = [[UIToolbar alloc] init];
+            toolbar.barStyle = (UIBarStyle)self.liveBlurBackgroundStyle;
+            
+            if ([toolbar respondsToSelector:@selector(setBarTintColor:)])
+                [toolbar performSelector:@selector(setBarTintColor:) withObject:self.liveBlurTintColor];
+            
+            toolbar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+            toolbar.layer.cornerRadius = self.cornerRadius;
+            toolbar.layer.borderColor = self.borderColor.CGColor;
+            toolbar.layer.borderWidth = self.borderWidth;
+            toolbar.layer.masksToBounds = YES;
+            toolbar;
+        });
+    }
+    
+    self.menuWrapperView = ({
+        UIView *view = [[UIView alloc] init];
+        view.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        
+        if (!self.liveBlur || !REUIKitIsFlatMode()) {
+            view.layer.shadowColor = self.shadowColor.CGColor;
+            view.layer.shadowOffset = self.shadowOffset;
+            view.layer.shadowOpacity = self.shadowOpacity;
+            view.layer.shadowRadius = self.shadowRadius;
+            view.layer.shouldRasterize = YES;
+            view.layer.rasterizationScale = [UIScreen mainScreen].scale;
+        }
+        
+        view;
+    });
+    
+    self.backgroundButton = ({
+        UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+        button.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        button.accessibilityLabel = NSLocalizedString(@"Menu background", @"Menu background");
+        button.accessibilityHint = NSLocalizedString(@"Double tap to close", @"Double tap to close");
+        [button addTarget:self action:@selector(close) forControlEvents:UIControlEventTouchUpInside];
+        button;
+    });
+    
+    for (REMenuItem *item in self.items) {
+        NSInteger index = [self.items indexOfObject:item];
+        
+        CGFloat itemHeight = self.itemHeight;
+        if (index == self.items.count - 1)
+            itemHeight += self.cornerRadius;
+        
+        UIView *separatorView = [[UIView alloc] initWithFrame:CGRectMake(self.separatorOffset.width,
+                                                                         index * self.itemHeight + index * self.separatorHeight + 40.0 + self.separatorOffset.height,
+                                                                         viewController.navigationController.view.frame.size.width - self.separatorOffset.width,
+                                                                         self.separatorHeight)];
+        separatorView.backgroundColor = self.separatorColor;
+        separatorView.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        [self.menuView addSubview:separatorView];
+        
+        REMenuItemView *itemView = [[REMenuItemView alloc] initWithFrame:CGRectMake(0,
+                                                                                    index * self.itemHeight + (index + 1.0) * self.separatorHeight + 40.0,
+                                                                                    viewController.navigationController.view.frame.size.width,
+                                                                                    itemHeight)
+                                                                    menu:self item:item
+                                                             hasSubtitle:item.subtitle.length > 0];
+        itemView.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        item.itemView = itemView;
+        itemView.separatorView = separatorView;
+        itemView.autoresizesSubviews = YES;
+        if (item.customView) {
+            item.customView.frame = itemView.bounds;
+            [itemView addSubview:item.customView];
+        }
+        [self.menuView addSubview:itemView];
+        if (!self.firstItem) {
+            self.firstItem = itemView;
+        }
+    }
+    
+    // Set up frames
+    //
+    self.menuWrapperView.frame = CGRectMake(0, 0, viewController.navigationController.view.frame.size.width, self.combinedHeight);
+    self.menuView.autoresizesSubviews = NO;
+    self.menuView.frame = self.menuWrapperView.bounds;
+    self.menuView.autoresizesSubviews = YES;
+    
+    if (REUIKitIsFlatMode() && self.liveBlur) {
+        self.toolbar.frame = self.menuWrapperView.bounds;
+    }
+    
+    self.containerView.frame = viewController.navigationController.view.bounds;
+    self.backgroundButton.frame = self.containerView.bounds;
+    
+    // Add subviews
+    //
+    if (REUIKitIsFlatMode() && self.liveBlur) {
+        [self.menuWrapperView addSubview:self.toolbar];
+    }
+    
+    [self.menuWrapperView addSubview:self.menuView];
+    [self.containerView addSubview:self.backgroundButton];
+    self.backgroundButton.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    
+    [self.containerView addSubview:self.menuWrapperView];
+    self.containerView.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    [viewController.navigationController.view addSubview:self.containerView];
+    
+    [self.containerView.topAnchor constraintEqualToAnchor:viewController.navigationController.navigationBar.bottomAnchor].active = TRUE;
+    [self.containerView.leadingAnchor constraintEqualToAnchor:viewController.navigationController.view.leadingAnchor].active = TRUE;
+    [self.containerView.trailingAnchor constraintEqualToAnchor:viewController.navigationController.view.trailingAnchor].active = TRUE;
+    [self.containerView.bottomAnchor constraintEqualToAnchor:viewController.navigationController.view.bottomAnchor].active = TRUE;
+    
+    if ([self.delegate respondsToSelector:@selector(willOpenMenu:)]) {
+        [self.delegate willOpenMenu:self];
+    }
+    
+    // Animate appearance
+    //
+    if (self.bounce) {
+        self.isAnimating = YES;
+        if ([UIView respondsToSelector:@selector(animateWithDuration:delay:usingSpringWithDamping:initialSpringVelocity:options:animations:completion:)]) {
+            CGRect frame = self.menuView.frame;
+            frame.origin.y = -140.0;
+            self.menuWrapperView.frame = frame;
+            
+            [UIView animateWithDuration:self.animationDuration+self.bounceAnimationDuration
+                                  delay:0.0
+                 usingSpringWithDamping:0.6
+                  initialSpringVelocity:4.0
+                                options:UIViewAnimationOptionBeginFromCurrentState|UIViewAnimationOptionCurveEaseInOut
+                             animations:^{
+                                 self.backgroundView.alpha = self.backgroundAlpha;
+                                 CGRect frame = self.menuView.frame;
+                                 frame.origin.y = -35.0;
+                                 self.menuWrapperView.frame = frame;
+                             } completion:^(BOOL finished) {
+                                 self.isAnimating = NO;
+                                 if ([self.delegate respondsToSelector:@selector(didOpenMenu:)]) {
+                                     [self.delegate didOpenMenu:self];
+                                 }
+                                 UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, self.firstItem);
+                             }];
+        } else {
+            [UIView animateWithDuration:self.animationDuration
+                                  delay:0.0
+                                options:UIViewAnimationOptionBeginFromCurrentState|UIViewAnimationOptionCurveEaseInOut
+                             animations:^{
+                                 self.backgroundView.alpha = self.backgroundAlpha;
+                                 CGRect frame = self.menuView.frame;
+                                 frame.origin.y = -35;
+                                 self.menuWrapperView.frame = frame;
+                             } completion:^(BOOL finished) {
+                                 self.isAnimating = NO;
+                                 if ([self.delegate respondsToSelector:@selector(didOpenMenu:)]) {
+                                     [self.delegate didOpenMenu:self];
+                                 }
+                                 UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, self.firstItem);
+                             }];
+            
+        }
+    } else {
+        [UIView animateWithDuration:self.animationDuration
+                              delay:0.0
+                            options:UIViewAnimationOptionBeginFromCurrentState|UIViewAnimationOptionCurveEaseInOut
+                         animations:^{
+                             self.backgroundView.alpha = self.backgroundAlpha;
+                             CGRect frame = self.menuView.frame;
+                             frame.origin.y = -35;
+                             self.menuWrapperView.frame = frame;
+                         } completion:^(BOOL finished) {
+                             self.isAnimating = NO;
+                             if ([self.delegate respondsToSelector:@selector(didOpenMenu:)]) {
+                                 [self.delegate didOpenMenu:self];
+                             }
+                             UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, self.firstItem);
+                         }];
+    }
+}
+
 - (void)showFromRect:(CGRect)rect inView:(UIView *)view
 {
     if (self.isAnimating) {
